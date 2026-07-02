@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>PWA Render App</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; background-color: #030712; font-family: system-ui; min-height: 100vh; position: relative; }
+        #root { width: 100%; min-height: 100vh; display: flex; justify-content: center; align-items: center; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+        <footer style="position:absolute; bottom:10px; left:0; width:100%; display:flex; justify-content:center; pointer-events:none; z-index:9999;">
+            <img src="https://i.ibb.co/HfZCBFqK/slb.png" alt="slb" style="width:64px; opacity:0.8;">
+        </footer>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script>
+            window.addEventListener('error', function(e) {
+                const root = document.getElementById('root');
+                if (root) {
+                    root.innerHTML = '<div style="color:#ef4444; padding:20px; font-family:monospace; background:#fee2e2; border:1px solid #f87171; border-radius:8px; margin:20px; width:calc(100% - 40px); box-sizing:border-box;"><b>❌ Erreur React :</b><br>' + e.message + '</div>';
+                }
+            });
+        </script>
+    <script>
+        if (window.React) window.React.default = window.React;
+        if (window.ReactDOM) window.ReactDOM.default = window.ReactDOM;
+
+        window.exports = {};
+        window.module = { exports: window.exports };
+        window.require = function(moduleName) {
+            if (moduleName === 'react') return window.React;
+            if (moduleName === 'react-dom' || moduleName === 'react-dom/client') return window.ReactDOM;
+            return {};
+        };
+    </script>
+    <script>
+        try {
+            const {
+  useState,
+  useEffect
+} = React;
+function App() {
+  const [apiKey, setApiKey] = useState(() => {
+    return localStorage.getItem("deepseek_api_key") || "sk-b4c3c291689640e7958ad20e87a5";
+  });
+  const [prompt, setPrompt] = useState("");
+  const [sourceCode, setSourceCode] = useState("");
+  const [responseText, setResponseText] = useState("");
+  const [responseCode, setResponseCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    localStorage.setItem("deepseek_api_key", apiKey);
+  }, [apiKey]);
+  const handleCopyCode = () => {
+    if (!responseCode) return;
+    navigator.clipboard.writeText(responseCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  const handleSend = async () => {
+    let clipboardText = "";
+    try {
+      clipboardText = await navigator.clipboard.readText();
+    } catch (err) {
+      alert("Impossible de lire le presse-papiers : " + err.message);
+      return;
+    }
+    if (!clipboardText.trim()) {
+      alert("Le presse-papiers est vide. Copie d'abord le code source à corriger.");
+      return;
+    }
+    setSourceCode(clipboardText);
+    if (!apiKey) return alert("Clé API manquante");
+    setLoading(true);
+    const fullPrompt = `Instruction :\n${prompt}\n\nCode source à corriger :\n${clipboardText}\n\n⚠️ IMPORTANT : 
+1. Donne le code complet corrigé, pas des extraits. 
+2. Fournis d'abord le code corrigé dans un UNIQUE bloc encadré par \`\`\`.
+3. Après ce bloc, mets tes explications ou commentaires (en texte clair, sans backticks).
+Ne mets aucun autre bloc de code ailleurs.`;
+    try {
+      const result = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: [{
+            role: "user",
+            content: fullPrompt
+          }],
+          stream: false
+        })
+      });
+      const data = await result.json();
+      const fullText = data.choices[0].message.content;
+      const first = fullText.indexOf('```');
+      const last = fullText.lastIndexOf('```');
+      if (first !== -1 && last !== -1 && first < last) {
+        let code = fullText.substring(first + 3, last).trim();
+        const lines = code.split('\n');
+        if (lines.length > 1 && /^[a-zA-Z-]+$/.test(lines[0].trim())) {
+          lines.shift();
+          code = lines.join('\n');
+        }
+        setResponseCode(code);
+        const before = fullText.substring(0, first).trim();
+        const after = fullText.substring(last + 3).trim();
+        setResponseText((before + ' ' + after).trim() || "Aucune explication.");
+      } else {
+        setResponseText(fullText);
+        setResponseCode("");
+      }
+    } catch (e) {
+      setResponseText("Erreur: " + e.message);
+      setResponseCode("");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const renderSideButtons = side => {
+    const count = 5;
+    const buttons = [];
+    for (let i = 1; i <= count; i++) {
+      buttons.push(/*#__PURE__*/React.createElement("button", {
+        key: `${side}-${i}`,
+        className: "w-8 h-8 sm:w-10 sm:h-10 rounded-lg border border-white/10 bg-slate-800/50 hover:bg-slate-700/50 text-white/60 hover:text-white text-xs font-mono transition-colors flex items-center justify-center"
+      }, side === 'left' ? i : i + count));
+    }
+    return buttons;
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "min-h-screen bg-slate-950 text-slate-200 p-3 sm:p-4 md:p-6 font-sans antialiased"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "max-w-6xl mx-auto"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-[auto_1fr_auto] gap-2 sm:gap-4 items-start"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2 sm:gap-3 pt-2"
+  }, renderSideButtons('left')), /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0 space-y-4 md:space-y-6"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900/50 backdrop-blur-xl border border-white/10 p-4 sm:p-6 rounded-3xl shadow-2xl"
+  }, /*#__PURE__*/React.createElement("h1", {
+    className: "text-lg sm:text-xl font-bold mb-3 text-blue-400"
+  }, "DeepSeek Mastercode"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: apiKey,
+    onChange: e => setApiKey(e.target.value),
+    className: "w-full bg-slate-950/50 border border-white/5 rounded-xl p-3 text-sm mb-3",
+    placeholder: "Clé API..."
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "mb-3"
+  }, /*#__PURE__*/React.createElement("textarea", {
+    value: prompt,
+    onChange: e => setPrompt(e.target.value),
+    className: "w-full bg-slate-950/50 border border-white/5 rounded-xl p-3 text-sm h-32 sm:h-24 resize-none",
+    placeholder: "Décris ta modification (instruction)..."
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-center items-center gap-3 relative"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: handleSend,
+    disabled: loading,
+    className: "w-full sm:w-auto bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 px-6 sm:px-8 py-3 sm:py-2 rounded-xl font-bold transition-all text-base"
+  }, "Envoyer"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleCopyCode,
+    className: `w-10 h-10 sm:w-12 sm:h-12 rounded-xl border-2 transition-all duration-300 flex items-center justify-center text-xl sm:text-2xl ${responseCode ? 'border-red-500 shadow-red-500/50 shadow-lg bg-slate-800/80' : 'border-white/20 bg-slate-800/50'}`,
+    title: responseCode ? "Cliquer pour copier le code généré" : "Aucun code généré"
+  }, "📋"), copied && /*#__PURE__*/React.createElement("div", {
+    className: "absolute -top-10 right-0 text-xs text-green-400 bg-slate-900/80 px-2 py-1 rounded-lg border border-green-500/30"
+  }, "Copié ✓"))), /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-900/30 border border-white/5 rounded-3xl p-4 sm:p-6 overflow-y-auto max-h-[50vh] md:max-h-[60vh]"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "text-xs uppercase text-slate-500 font-bold mb-2"
+  }, "Explications"), /*#__PURE__*/React.createElement("div", {
+    className: "text-sm leading-relaxed text-slate-300 whitespace-pre-wrap"
+  }, responseText || "En attente d'analyse..."))), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2 sm:gap-3 pt-2"
+  }, renderSideButtons('right')))));
+}
+            
+            let AppComp = undefined;
+
+            if (window.exports && window.exports.default) {
+                AppComp = window.exports.default;
+            } 
+            else if (window.module && window.module.exports && (typeof window.module.exports === 'function' || Object.keys(window.module.exports).length > 0)) {
+                AppComp = window.module.exports.default || window.module.exports;
+            }
+
+            if (!AppComp || (typeof AppComp === 'object' && Object.keys(AppComp).length === 0)) {
+                if (typeof window.App === 'function') AppComp = window.App;
+                else if (typeof App !== 'undefined') AppComp = App;
+                else if (typeof Main !== 'undefined') AppComp = Main;
+                else {
+                    const globals = Object.keys(window);
+                    for (let key of globals) {
+                        if (/^[A-Z]/.test(key) && typeof window[key] === 'function' && key !== 'React' && key !== 'ReactDOM') {
+                            AppComp = window[key];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (AppComp) {
+                const container = document.getElementById('root');
+                const root = ReactDOM.createRoot(container);
+                root.render(React.createElement(AppComp));
+            } else {
+                throw new Error("Aucun composant React principal détecté. Veuillez nommer votre composant principal 'App' ou utiliser 'export default'.");
+            }
+        } catch (err) {
+            document.getElementById('root').innerHTML = '<div style="color:#ef4444; padding:20px; font-family:monospace; background:#fee2e2; border:1px solid #f87171; border-radius:8px; margin:20px; box-sizing:border-box;"><b>❌ Erreur d\'exécution :</b><br>' + err.message + '</div>';
+        }
+    </script>
+</body>
+</html>
